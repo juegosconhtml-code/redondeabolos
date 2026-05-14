@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Bolera Matemática - Redondeo</title>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background: #000; font-family: 'Arial', sans-serif; }
+        canvas { display: block; margin: 0 auto; cursor: crosshair; }
+        #ui {
+            position: absolute; top: 10px; width: 100%; text-align: center;
+            color: white; pointer-events: none; text-shadow: 2px 2px 5px #000;
+        }
+        .panel { background: rgba(0,0,0,0.7); padding: 15px; border-radius: 15px; display: inline-block; border: 2px solid #fff; }
+        #pregunta { font-size: 28px; margin-bottom: 5px; color: #ffeb3b; }
+        #opciones-texto { font-size: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="ui">
+    <div class="panel">
+        <div id="pregunta">Cargando...</div>
+        <div id="opciones-texto"></div>
+        <div id="puntos">Puntos: 0</div>
+    </div>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// --- CARGA DE IMÁGENES ---
+const imgFondo = new Image(); imgFondo.src = 'fondo.jpg';
+const imgBola = new Image(); imgBola.src = 'bola.png';
+const imgBolo = new Image(); imgBolo.src = 'bolo.png';
+
+// --- ESTADO DEL JUEGO ---
+let score = 0;
+let gameState = 'IDLE'; // IDLE, ROLLING, HIT, GUTTER
+let challenge = {};
+let ball = { x: 0, y: 0, w: 100, h: 100, targetX: 0, speedY: 6 };
+let pins = []; // Array para las 3 posiciones de bolos
+
+function initChallenge() {
+    const tipos = ['unidades', 'décimas', 'centésimas'];
+    const tipo = tipos[Math.floor(Math.random() * tipos.length)];
+    let num, correct;
+
+    if (tipo === 'unidades') {
+        num = (Math.random() * 9 + 1).toFixed(1);
+        correct = Math.round(parseFloat(num));
+    } else if (tipo === 'décimas') {
+        num = (Math.random() * 2).toFixed(2);
+        correct = (Math.round(parseFloat(num) * 10) / 10).toFixed(1);
+    } else {
+        num = (Math.random() * 1).toFixed(3);
+        correct = (Math.round(parseFloat(num) * 100) / 100).toFixed(2);
+    }
+
+    let ops = [correct];
+    while(ops.length < 3) {
+        let fake = (parseFloat(correct) + (Math.random() > 0.5 ? 0.1 : -0.1)).toFixed(tipo === 'unidades' ? 0 : (tipo === 'décimas' ? 1 : 2));
+        if(!ops.includes(fake) && fake >= 0) ops.push(fake);
+    }
+    ops.sort(() => Math.random() - 0.5);
+
+    challenge = { text: `Redondea ${num} a las ${tipo}`, correct: correct, options: ops };
+    document.getElementById('pregunta').innerText = challenge.text;
+    document.getElementById('opciones-texto').innerText = `Opciones: ${ops.join('  |  ')}`;
+    
+    resetBall();
+}
+
+function resetBall() {
+    ball.x = canvas.width / 2;
+    ball.y = canvas.height * 0.85;
+    ball.w = 120; // Tamaño inicial grande (cerca)
+    ball.h = 120;
+    gameState = 'IDLE';
+}
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    initChallenge();
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // 1. Fondo
+    ctx.drawImage(imgFondo, 0, 0, canvas.width, canvas.height);
+
+    // 2. Dibujar Bolos (Formación en las 3 zonas de tiro)
+    const xZonas = [canvas.width * 0.25, canvas.width * 0.5, canvas.width * 0.75];
+    xZonas.forEach((zx, i) => {
+        const valorOpcion = challenge.options[i];
+        // Solo dibujamos bolos si no han sido derribados en esta ronda
+        if (!(gameState === 'HIT' && ball.targetX === zx)) {
+            // Dibujar grupo de bolos ( formación simple )
+            for(let row=0; row<2; row++) {
+                for(let col=0; col<2-row; col++) {
+                    let bx = zx - 20 + (col * 25) + (row * 12);
+                    let by = canvas.height * 0.28 + (row * 10);
+                    ctx.drawImage(imgBolo, bx, by, 30, 60);
+                }
+            }
+            // Etiqueta de precio/número debajo de los bolos
+            ctx.fillStyle = "white";
+            ctx.font = "bold 20px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText(valorOpcion, zx, canvas.height * 0.42);
+        }
+    });
+
+    // 3. Dibujar Bola
+    if (gameState !== 'HIT') {
+        ctx.drawImage(imgBola, ball.x - ball.w/2, ball.y - ball.h/2, ball.w, ball.h);
+    }
+
+    update();
+    requestAnimationFrame(draw);
+}
+
+function update() {
+    if (gameState === 'ROLLING') {
+        ball.y -= ball.speedY;
+        // Reducción de tamaño para efecto profundidad
+        ball.w -= 0.8;
+        ball.h -= 0.8;
+
+        // Movimiento lateral hacia el objetivo
+        let dx = ball.targetX - ball.x;
+        ball.x += dx * 0.05;
+
+        // Si llega a la zona de bolos
+        if (ball.y <= canvas.height * 0.35) {
+            const index = [canvas.width * 0.25, canvas.width * 0.5, canvas.width * 0.75].indexOf(ball.targetX);
+            if (challenge.options[index] == challenge.correct) {
+                gameState = 'HIT';
+                score += 10;
+                document.getElementById('puntos').innerText = `Puntos: ${score}`;
+                setTimeout(initChallenge, 1500);
+            } else {
+                gameState = 'GUTTER';
+            }
+        }
+    }
+
+    if (gameState === 'GUTTER') {
+        // Desviar al canal
+        ball.x += (ball.targetX < canvas.width/2 ? -2 : 2);
+        ball.y -= 2;
+        ball.w -= 1;
+        ball.h -= 1;
+        if (ball.w < 5) {
+            alert("¡Al canal! El redondeo correcto era " + challenge.correct);
+            initChallenge();
+        }
+    }
+}
+
+function lanzar(e) {
+    if (gameState !== 'IDLE') return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const clickX = (e.clientX || e.touches[0].clientX) - rect.left;
+    
+    // Determinar a qué carril apunta el alumno
+    if (clickX < canvas.width * 0.33) ball.targetX = canvas.width * 0.25;
+    else if (clickX > canvas.width * 0.66) ball.targetX = canvas.width * 0.75;
+    else ball.targetX = canvas.width * 0.5;
+
+    gameState = 'ROLLING';
+}
+
+window.addEventListener('mousedown', lanzar);
+window.addEventListener('touchstart', lanzar);
+window.addEventListener('resize', resize);
+
+imgFondo.onload = resize;
+draw();
+</script>
+</body>
+</html>
