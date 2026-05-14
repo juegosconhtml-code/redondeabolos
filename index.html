@@ -3,31 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Bolera Matemática GitHub</title>
+    <title>Bolera Matemática</title>
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { margin: 0; padding: 0; overflow: hidden; background: #000; font-family: sans-serif; }
         canvas { display: block; margin: 0 auto; }
+        
+        /* Marcador horizontal optimizado */
         #ui {
-            position: absolute; top: 20px; width: 100%; text-align: center;
-            color: white; pointer-events: none; text-shadow: 2px 2px 8px #000;
+            position: absolute; top: 0; left: 0; width: 100%;
+            background: rgba(0,0,0,0.85); color: white;
+            display: flex; justify-content: space-around; align-items: center;
+            padding: 5px 0; border-bottom: 2px solid #4CAF50;
+            z-index: 10;
         }
-        .panel { 
-            background: rgba(0,0,0,0.8); padding: 20px; border-radius: 15px; 
-            display: inline-block; border: 2px solid #4CAF50; min-width: 300px;
-        }
-        #pregunta { font-size: 32px; margin-bottom: 10px; color: #ccff00; }
-        #opciones-texto { font-size: 22px; letter-spacing: 2px; }
-        #puntos { font-size: 18px; margin-top: 10px; color: #00e5ff; }
+        .stat { font-size: 18px; font-weight: bold; }
+        #pregunta { color: #ccff00; font-size: 20px; }
+        #puntos { color: #00e5ff; }
     </style>
 </head>
 <body>
 
 <div id="ui">
-    <div class="panel">
-        <div id="pregunta">Cargando imágenes...</div>
-        <div id="opciones-texto"></div>
-        <div id="puntos">Puntos: 0</div>
-    </div>
+    <div id="pregunta" class="stat">Cargando...</div>
+    <div id="puntos" class="stat">Puntos: 0</div>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -36,37 +34,23 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// --- CARGA DE IMÁGENES ---
-const imgFondo = new Image();
-const imgBola = new Image();
-const imgBolo = new Image();
-
-// IMPORTANTE: Asegúrate de que los nombres coincidan exactamente (mayúsculas/minúsculas)
-imgFondo.src = 'fondo.jpg';
-imgBola.src = 'bola.png';
-imgBolo.src = 'bolo.png';
+const imgFondo = new Image(); imgFondo.src = 'fondo.jpg';
+const imgBola = new Image(); imgBola.src = 'bola.png';
+const imgBolo = new Image(); imgBolo.src = 'bolo.png';
 
 let imagenesCargadas = 0;
-const totalImagenes = 3;
-
-function alCargarImagen() {
-    imagenesCargadas++;
-    if (imagenesCargadas === totalImagenes) {
-        resize();
-        draw();
-    }
-}
-
-imgFondo.onload = alCargarImagen;
-imgBola.onload = alCargarImagen;
-imgBolo.onload = alCargarImagen;
-
-// --- VARIABLES DE JUEGO ---
 let score = 0;
 let gameState = 'IDLE'; 
 let challenge = {};
-let ball = { x: 0, y: 0, w: 140, h: 140, targetX: 0, speedY: 7 };
-const xZonasRelativas = [0.25, 0.5, 0.75]; // Posiciones de los carriles
+let ball = { x: 0, y: 0, w: 140, h: 140, targetX: 0, speedY: 8 };
+
+// Posiciones fijas de las 3 miras (Izquierda, Centro, Derecha)
+const xMirasRel = [0.35, 0.5, 0.65]; 
+
+function alCargarImagen() {
+    if (++imagenesCargadas === 3) { resize(); draw(); }
+}
+imgFondo.onload = imgBola.onload = imgBolo.onload = alCargarImagen;
 
 function initChallenge() {
     const tipos = ['unidades', 'décimas', 'centésimas'];
@@ -86,60 +70,69 @@ function initChallenge() {
 
     let ops = [correct];
     while(ops.length < 3) {
-        let offset = (Math.random() > 0.5 ? 0.1 : -0.1);
-        let fake = (parseFloat(correct) + offset).toFixed(tipo === 'unidades' ? 0 : (tipo === 'décimas' ? 1 : 2));
+        let fake = (parseFloat(correct) + (Math.random() > 0.5 ? 0.1 : -0.1)).toFixed(tipo === 'unidades' ? 0 : (tipo === 'décimas' ? 1 : 2));
         if(!ops.includes(fake) && fake >= 0) ops.push(fake);
     }
     ops.sort(() => Math.random() - 0.5);
 
     challenge = { text: `Redondea ${num} a las ${tipo}`, correct: correct, options: ops };
     document.getElementById('pregunta').innerText = challenge.text;
-    document.getElementById('opciones-texto').innerText = `IZQ: ${ops[0]} | CENTRO: ${ops[1]} | DER: ${ops[2]}`;
-    
     resetBall();
 }
 
 function resetBall() {
     ball.x = canvas.width / 2;
-    ball.y = canvas.height * 0.88;
-    ball.w = 150;
-    ball.h = 150;
+    ball.y = canvas.height * 0.9;
+    ball.w = 140; ball.h = 140;
     gameState = 'IDLE';
 }
 
 function resize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    if (imagenesCargadas === totalImagenes) initChallenge();
+    if (imagenesCargadas === 3) initChallenge();
 }
 
 function draw() {
-    if (imagenesCargadas < totalImagenes) return;
-
+    if (imagenesCargadas < 3) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // 1. Dibujar Fondo
     ctx.drawImage(imgFondo, 0, 0, canvas.width, canvas.height);
 
-    // 2. Dibujar Bolos
-    xZonasRelativas.forEach((relX, i) => {
-        const zx = canvas.width * relX;
-        // Si el jugador ha golpeado esta zona, no dibujamos bolos (simula caída)
-        if (!(gameState === 'HIT' && ball.targetX === zx)) {
-            const boloW = canvas.width * 0.04; // Escala dinámica según pantalla
-            const boloH = boloW * 2.2;
-            
-            // Formación triangular de 3 bolos por opción
-            const posiciones = [
-                {dx: 0, dy: 0}, 
-                {dx: -boloW/2, dy: 10}, 
-                {dx: boloW/2, dy: 10}
-            ];
-
-            posiciones.forEach(p => {
-                ctx.drawImage(imgBolo, zx + p.dx - boloW/2, canvas.height * 0.28 + p.dy, boloW, boloH);
-            });
+    // 1. Dibujar los 10 bolos en el centro (solo si no hay strike)
+    if (gameState !== 'HIT') {
+        const centroX = canvas.width * 0.5;
+        const inicioY = canvas.height * 0.25;
+        const bW = canvas.width * 0.03;
+        const bH = bW * 2.2;
+        
+        // Formación triangular clásica (1, 2, 3, 4)
+        let filaCount = 0;
+        for (let i = 1; i <= 4; i++) {
+            for (let j = 0; j < i; j++) {
+                let x = centroX + (j * bW) - (i * bW / 2) + bW/2;
+                let y = inicioY + (i * 12);
+                ctx.drawImage(imgBolo, x - bW/2, y, bW, bH);
+            }
         }
+    }
+
+    // 2. Dibujar las 3 miras y sus etiquetas
+    xMirasRel.forEach((relX, i) => {
+        const mx = canvas.width * relX;
+        const my = canvas.height * 0.45;
+
+        // Dibujar mira (círculo guía)
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(mx, my, 20, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Número debajo de la mira
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 22px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(challenge.options[i], mx, my + 45);
     });
 
     // 3. Dibujar Bola
@@ -154,21 +147,18 @@ function draw() {
 function update() {
     if (gameState === 'ROLLING') {
         ball.y -= ball.speedY;
-        // Reducción proporcional al movimiento para efecto 3D
-        ball.w = Math.max(30, ball.w - 1.1);
-        ball.h = Math.max(30, ball.h - 1.1);
+        ball.w = Math.max(25, ball.w - 1.2);
+        ball.h = Math.max(25, ball.h - 1.2);
+        ball.x += (ball.targetX - ball.x) * 0.07;
 
-        let dx = ball.targetX - ball.x;
-        ball.x += dx * 0.06;
-
-        // Límite donde están los bolos
-        if (ball.y <= canvas.height * 0.35) {
-            const index = xZonasRelativas.map(r => canvas.width * r).indexOf(ball.targetX);
+        // Verificar impacto en la línea de las miras
+        if (ball.y <= canvas.height * 0.45) {
+            const index = xMirasRel.map(r => canvas.width * r).indexOf(ball.targetX);
             if (challenge.options[index] == challenge.correct) {
                 gameState = 'HIT';
                 score += 10;
                 document.getElementById('puntos').innerText = `Puntos: ${score}`;
-                setTimeout(initChallenge, 1200);
+                setTimeout(initChallenge, 1000);
             } else {
                 gameState = 'GUTTER';
             }
@@ -176,13 +166,11 @@ function update() {
     }
 
     if (gameState === 'GUTTER') {
-        // La bola se va por el lateral y se hace pequeña
-        ball.x += (ball.targetX < canvas.width/2 ? -3 : 3);
-        ball.y -= 2;
-        ball.w *= 0.98;
-        ball.h *= 0.98;
+        ball.x += (ball.targetX < canvas.width * 0.5 ? -4 : 4);
+        ball.y -= 3;
+        ball.w *= 0.95; ball.h *= 0.95;
         if (ball.w < 5) {
-            alert("¡Oops! El redondeo correcto era: " + challenge.correct);
+            alert("¡Incorrecto! Era: " + challenge.correct);
             initChallenge();
         }
     }
@@ -190,14 +178,15 @@ function update() {
 
 function lanzar(e) {
     if (gameState !== 'IDLE') return;
-    
     const rect = canvas.getBoundingClientRect();
-    const clienteX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clickX = clienteX - rect.left;
+    const cX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clickX = cX - rect.left;
     
-    if (clickX < canvas.width * 0.33) ball.targetX = canvas.width * 0.25;
-    else if (clickX > canvas.width * 0.66) ball.targetX = canvas.width * 0.75;
-    else ball.targetX = canvas.width * 0.5;
+    // Elegir la mira más cercana al clic
+    const targets = xMirasRel.map(r => canvas.width * r);
+    ball.targetX = targets.reduce((prev, curr) => 
+        Math.abs(curr - clickX) < Math.abs(prev - clickX) ? curr : prev
+    );
 
     gameState = 'ROLLING';
 }
